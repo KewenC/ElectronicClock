@@ -1,0 +1,785 @@
+C51 COMPILER V9.01   MAIN                                                                  04/21/2018 02:05:32 PAGE 1   
+
+
+C51 COMPILER V9.01, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN main.OBJ
+COMPILER INVOKED BY: D:\_AppPath\Keil\C51\BIN\C51.EXE main.c BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          /*******************************************************************************
+   2          *                 
+   3          *                              电子时钟源程序
+   4          *
+   5          *******************************************************************************/
+   6          //包含头文件
+   7          #include<reg51.h>
+   8          #include"lcd.h"
+   9          #include"ds1302.h"
+  10          #include"music.h"
+  11          //变量定义
+  12          uint Mode_Flag = 0;
+  13          uint Set_Flag = 0;//0-hour 1-minute 2-year 3-month 4-day
+  14          uint Set_Flag_Alarm     = 0;//0-alarm hour    1-alarm minute
+  15          uint d = 0;
+  16          uint is_flicker = 1;//1为显示，0为隐藏
+  17          uchar isAlarm = 0; //第一个闹铃标志位
+  18          uchar isAlarm2 = 0; //第二个闹铃标志位
+  19          uchar Alarm_Hour = 6;//第一个闹铃
+  20          uchar Alarm_Minute = 0;
+  21          uchar Alarm_Hour2 = 0x12;//第二个闹铃
+  22          uchar Alarm_Minute2 = 0;
+  23          uchar Sleep_Minute = 0;//睡眠 分
+  24          uchar isSleep = 0; //是否睡眠
+  25          uchar WhichSleep = 0;//闹1还是闹2睡眠
+  26          uchar f;
+  27          uchar Alarm_Sound = 0;//音乐选择
+  28          uchar code Feast_month[12] = {0x01,0x02,0x03,0x03,0x05,0x05,0x06,0x08,0x09,0x09,0x10,0x12};     //节日
+  29          uchar code Feast_day[12] =   {0x01,0x14,0x08,0x12,0x01,0x04,0x01,0x01,0x10,0x18,0x01,0x25};
+  30          //函数声明
+  31          void SleepAlarm(uchar Minute,uchar Which);
+  32          void SetAlarmSound();
+  33          void EnterSetAlarmSound();
+  34          void DeepOne();
+  35          void DeepNumber(uchar x);
+  36          void AlarmUpAndDown();
+  37          void delay(unsigned int i);
+  38          void UpAndDown(uchar ind,uchar H,uchar L);
+  39          void SetAlarmTime();
+  40          void SetAllTime();
+  41          void EnterSetAlarm();
+  42          void EnterSetTime();
+  43          void LcdDisplay();
+  44          void LcdDisplay_time();
+  45          void EnterMode();
+  46          
+  47          /*
+  48           * 响一声函数
+  49           */
+  50          void DeepOne(){
+  51   1          ALARM=0;
+  52   1          Lcd1602_Delay1ms(200);
+  53   1          ALARM=1;
+  54   1          Lcd1602_Delay1ms(500);
+  55   1      }
+C51 COMPILER V9.01   MAIN                                                                  04/21/2018 02:05:32 PAGE 2   
+
+  56          
+  57          /*
+  58           * 响几声函数
+  59           */
+  60          void DeepNumber(uchar x)
+  61          {
+  62   1          uchar i;
+  63   1          uchar j;
+  64   1          x = x==0?24:x;
+  65   1          j = x<6?100:0;
+  66   1          for(i=0;i<x;i++){
+  67   2              ALARM=0;
+  68   2              Lcd1602_Delay1ms(100);
+  69   2              ALARM=1;
+  70   2              Ds1302ReadTime();
+  71   2              LcdDisplay();
+  72   2              Lcd1602_Delay1ms(j);
+  73   2          }
+  74   1      }
+  75          /*
+  76           * 延时函数
+  77           */
+  78          void delay(unsigned int i)
+  79          {
+  80   1          char j;
+  81   1          for(i; i > 0; i--)
+  82   1              for(j = 200; j > 0; j--);
+  83   1      }
+  84          
+  85          /*
+  86           *Lcd写字符串函数
+  87           */
+  88          void LcdWriteDataString(unsigned char *str){
+  89   1          while(*str){
+  90   2              LcdWriteData(*str);
+  91   2              str++;
+  92   2          }
+  93   1      }
+  94          
+  95          /*
+  96           * 闹铃增减函数
+  97           */
+  98          void AlarmUpAndDown(uchar flag,uchar H,uchar a){
+  99   1          if(UP==0){
+ 100   2              Lcd1602_Delay1ms(10);
+ 101   2              if(UP==0){
+ 102   3                  uint tmp = flag==0?Alarm_Hour:Alarm_Minute;
+ 103   3                  tmp = (tmp&0x0f)<0x9?(tmp+0x01):(tmp+0x07);
+ 104   3                  if(!flag){
+ 105   4                      Alarm_Hour = tmp<(H+1)?tmp:0 ;
+ 106   4                  }else{
+ 107   4                      Alarm_Minute = tmp<(H+1)?tmp:0 ;
+ 108   4                  }
+ 109   3                  if(a){
+ 110   4                      isAlarm2=1;
+ 111   4                  }else{
+ 112   4                      isAlarm=1;
+ 113   4                  }
+ 114   3                  DeepOne();
+ 115   3                  while((d<50)&&(UP==0)){
+ 116   4                      Lcd1602_Delay1ms(10);
+ 117   4                      d++;
+C51 COMPILER V9.01   MAIN                                                                  04/21/2018 02:05:32 PAGE 3   
+
+ 118   4                  }
+ 119   3                  d=0;
+ 120   3              }
+ 121   2          }
+ 122   1          if(DOWN==0){
+ 123   2              Lcd1602_Delay1ms(10);
+ 124   2              if(DOWN==0){
+ 125   3      
+ 126   3                  uint tmp = flag==0?Alarm_Hour:Alarm_Minute;
+ 127   3                  if(tmp){
+ 128   4                      tmp = (tmp&0x0f)>0?(tmp-0x01):(tmp-0x07);
+ 129   4                      if(!flag){
+ 130   5                          Alarm_Hour = tmp ;
+ 131   5                      }else{
+ 132   5                          Alarm_Minute = tmp ;
+ 133   5                      }
+ 134   4                  }else{
+ 135   4                      if(!flag){
+ 136   5                          Alarm_Hour = H ;
+ 137   5                      }else{
+ 138   5                          Alarm_Minute = H ;
+ 139   5                      }
+ 140   4                  }
+ 141   3                  if(a){
+ 142   4                      isAlarm2=1;
+ 143   4                  }else{
+ 144   4                      isAlarm=1;
+ 145   4                  }
+ 146   3                  DeepOne();
+ 147   3                  while((d<50)&&(DOWN==0)){
+ 148   4                      Lcd1602_Delay1ms(10);
+ 149   4                      d++;
+ 150   4                  }
+ 151   3                  d=0;
+ 152   3              }
+ 153   2          }
+ 154   1      }
+ 155          
+ 156          /*
+ 157           * 时间增减函数
+ 158           */
+ 159          void UpAndDown(uchar ind,uchar H,uchar L){
+ 160   1          if(UP==0){
+ 161   2              Lcd1602_Delay1ms(10);
+ 162   2              if(UP==0){
+ 163   3                  uint tmp = Ds1302SingleRead(ind);
+ 164   3                  tmp = (tmp&0x0f)<0x9?(tmp+0x01):(tmp+0x07);
+ 165   3                  Ds1302SingleWrite(ind,tmp<(H+1)?tmp:L) ;
+ 166   3                  DeepOne();
+ 167   3                  while((d<50)&&(UP==0)){
+ 168   4                      Lcd1602_Delay1ms(10);
+ 169   4                      d++;
+ 170   4                  }
+ 171   3                  d=0;
+ 172   3              }
+ 173   2          }
+ 174   1          if(DOWN==0){
+ 175   2              Lcd1602_Delay1ms(10);
+ 176   2              if(DOWN==0){
+ 177   3      
+ 178   3                  uint tmp = Ds1302SingleRead(ind);
+ 179   3                  if(tmp){
+C51 COMPILER V9.01   MAIN                                                                  04/21/2018 02:05:32 PAGE 4   
+
+ 180   4                      tmp = (tmp&0x0f)>0?(tmp-0x01):(tmp-0x07);
+ 181   4                      if(L&&tmp==0){
+ 182   5                          Ds1302SingleWrite(ind,H) ;
+ 183   5                      }else{
+ 184   5                          Ds1302SingleWrite(ind,tmp) ;
+ 185   5                      }
+ 186   4                  }else{
+ 187   4                      Ds1302SingleWrite(ind,H) ;
+ 188   4                  }
+ 189   3                  DeepOne();
+ 190   3                  while((d<50)&&(DOWN==0)){
+ 191   4                      Lcd1602_Delay1ms(10);
+ 192   4                      d++;
+ 193   4                  }
+ 194   3                  d=0;
+ 195   3              }
+ 196   2          }
+ 197   1      }
+ 198          
+ 199          /*
+ 200           *设置闹铃时间
+ 201           */
+ 202          void SetAlarmTime(uchar a){
+ 203   1          uchar tmp_alarm_hour;
+ 204   1          uchar tmp_alarm_minute;
+ 205   1          if(a){
+ 206   2              tmp_alarm_hour = Alarm_Hour;
+ 207   2              tmp_alarm_minute = Alarm_Minute;
+ 208   2              Alarm_Hour = Alarm_Hour2;
+ 209   2              Alarm_Minute = Alarm_Minute2;
+ 210   2          }
+ 211   1          switch(Set_Flag_Alarm){
+ 212   2              case 0://设置闹铃时
+ 213   2                  LcdWriteCom(0x80);
+ 214   2                  if(a){
+ 215   3                      LcdWriteDataString("SetAlarm2:hour");
+ 216   3                  }else{
+ 217   3                      LcdWriteDataString("SetAlarm1:hour");
+ 218   3                  }
+ 219   2                  LcdWriteCom(0x80+0X40);
+ 220   2                  if(is_flicker){
+ 221   3                      LcdWriteData('0'+Alarm_Hour/16);                                //时
+ 222   3                      LcdWriteData('0'+(Alarm_Hour&0x0f));
+ 223   3                      is_flicker=0;
+ 224   3                  }else{
+ 225   3                      LcdWriteDataString("  ");
+ 226   3                      is_flicker=1;
+ 227   3                  }
+ 228   2                  LcdWriteData(':');
+ 229   2                  LcdWriteData('0'+Alarm_Minute/16);                          //分
+ 230   2                  LcdWriteData('0'+(Alarm_Minute&0x0f));
+ 231   2                  AlarmUpAndDown(0,0x23,a);
+ 232   2                  break;
+ 233   2              case 1:  //设置闹铃分
+ 234   2                  LcdWriteCom(0x80);
+ 235   2                  if(a){
+ 236   3                      LcdWriteDataString("SetAlarm2:minute");
+ 237   3                  }else{
+ 238   3                      LcdWriteDataString("SetAlarm1:minute");
+ 239   3                  }
+ 240   2      
+ 241   2                  LcdWriteCom(0x80+0X40);
+C51 COMPILER V9.01   MAIN                                                                  04/21/2018 02:05:32 PAGE 5   
+
+ 242   2                  LcdWriteData('0'+Alarm_Hour/16);                            //时
+ 243   2                  LcdWriteData('0'+(Alarm_Hour&0x0f));
+ 244   2                  LcdWriteData(':');
+ 245   2                  if(is_flicker){
+ 246   3                      LcdWriteData('0'+Alarm_Minute/16);                              //分
+ 247   3                      LcdWriteData('0'+(Alarm_Minute&0x0f));
+ 248   3                      is_flicker=0;
+ 249   3                  }else{
+ 250   3                      LcdWriteDataString("  ");
+ 251   3                      is_flicker=1;
+ 252   3                  }
+ 253   2                  AlarmUpAndDown(1,0x59,a);
+ 254   2                  break;
+ 255   2      
+ 256   2          }
+ 257   1          if(a){
+ 258   2              Alarm_Hour2 = Alarm_Hour;
+ 259   2              Alarm_Minute2 = Alarm_Minute;
+ 260   2              Alarm_Hour = tmp_alarm_hour ;
+ 261   2              Alarm_Minute = tmp_alarm_minute;
+ 262   2          }
+ 263   1      }
+ 264          
+ 265          /*
+ 266           *设置对应的时间
+ 267           */
+ 268          void SetAllTime(){
+ 269   1          LcdWriteCom(0x80);
+ 270   1          Ds1302ReadTime();
+ 271   1          switch(Set_Flag){
+ 272   2              case 0:
+ 273   2                  LcdWriteDataString("SetTime:hour");
+ 274   2                  LcdWriteCom(0x80+0X40);
+ 275   2                  if(is_flicker){
+ 276   3                      LcdWriteData('0'+TIME[2]/16);                           //时
+ 277   3                      LcdWriteData('0'+(TIME[2]&0x0f));
+ 278   3                      is_flicker=0;
+ 279   3                  }else{
+ 280   3                      LcdWriteDataString("  ");
+ 281   3                      is_flicker=1;
+ 282   3                  }
+ 283   2                  LcdWriteData(':');
+ 284   2                  LcdWriteData('0'+TIME[1]/16);                               //分
+ 285   2                  LcdWriteData('0'+(TIME[1]&0x0f));
+ 286   2                  LcdWriteData(':');
+ 287   2                  LcdWriteData('0'+TIME[0]/16);                               //秒
+ 288   2                  LcdWriteData('0'+(TIME[0]&0x0f));
+ 289   2                  UpAndDown(2,0x23,0);
+ 290   2                  break;
+ 291   2              case 1:
+ 292   2                  LcdWriteDataString("SetTime:Minute");
+ 293   2                  LcdWriteCom(0x80+0X40);
+ 294   2                  LcdWriteData('0'+TIME[2]/16);                               //时
+ 295   2                  LcdWriteData('0'+(TIME[2]&0x0f));
+ 296   2                  LcdWriteData(':');
+ 297   2                  if(is_flicker){
+ 298   3                      LcdWriteData('0'+TIME[1]/16);                           //分
+ 299   3                      LcdWriteData('0'+(TIME[1]&0x0f));
+ 300   3                      is_flicker=0;
+ 301   3                  }else{
+ 302   3                      LcdWriteDataString("  ");
+ 303   3                      is_flicker=1;
+C51 COMPILER V9.01   MAIN                                                                  04/21/2018 02:05:32 PAGE 6   
+
+ 304   3                  }
+ 305   2                  LcdWriteData(':');
+ 306   2                  LcdWriteData('0'+TIME[0]/16);                               //秒
+ 307   2                  LcdWriteData('0'+(TIME[0]&0x0f));
+ 308   2                  UpAndDown(1,0x59,0);
+ 309   2                  break;
+ 310   2              case 2:
+ 311   2                  LcdWriteDataString("SetTime:Second");
+ 312   2                  LcdWriteCom(0x80+0X40);
+ 313   2                  LcdWriteData('0'+TIME[2]/16);                               //时
+ 314   2                  LcdWriteData('0'+(TIME[2]&0x0f));
+ 315   2                  LcdWriteData(':');
+ 316   2                  LcdWriteData('0'+TIME[1]/16);                               //分
+ 317   2                  LcdWriteData('0'+(TIME[1]&0x0f));
+ 318   2                  LcdWriteData(':');
+ 319   2                  if(is_flicker){
+ 320   3                      LcdWriteData('0'+TIME[0]/16);                           //秒
+ 321   3                      LcdWriteData('0'+(TIME[0]&0x0f));
+ 322   3                      is_flicker=0;
+ 323   3                  }else{
+ 324   3                      LcdWriteDataString("  ");
+ 325   3                      is_flicker=1;
+ 326   3                  }
+ 327   2                  UpAndDown(0,0x59,0);
+ 328   2                  break;
+ 329   2              case 3:
+ 330   2                  LcdWriteDataString("SetTime:year");
+ 331   2                  LcdWriteCom(0x80+0X40);
+ 332   2                  if(is_flicker){
+ 333   3                      LcdWriteData('2');
+ 334   3                      LcdWriteData('0');
+ 335   3                      LcdWriteData('0'+TIME[6]/16);                   //年
+ 336   3                      LcdWriteData('0'+(TIME[6]&0x0f));
+ 337   3                      is_flicker=0;
+ 338   3                  }else{
+ 339   3                      LcdWriteDataString("    ");
+ 340   3                      is_flicker=1;
+ 341   3                  }
+ 342   2                  LcdWriteData('-');
+ 343   2                  LcdWriteData('0'+TIME[4]/16);                       //月
+ 344   2                  LcdWriteData('0'+(TIME[4]&0x0f));
+ 345   2                  LcdWriteData('-');
+ 346   2                  LcdWriteData('0'+TIME[3]/16);                       //日
+ 347   2                  LcdWriteData('0'+(TIME[3]&0x0f));
+ 348   2                  LcdWriteCom(0x80+0x4b);
+ 349   2                  LcdWriteData('0'+(TIME[5]&0x07));   //星期
+ 350   2                  UpAndDown(6,0x99,0);
+ 351   2                  break;
+ 352   2              case 4:
+ 353   2                  LcdWriteDataString("SetTime:month");
+ 354   2                  LcdWriteCom(0x80+0X40);
+ 355   2                  LcdWriteData('2');
+ 356   2                  LcdWriteData('0');
+ 357   2                  LcdWriteData('0'+TIME[6]/16);                       //年
+ 358   2                  LcdWriteData('0'+(TIME[6]&0x0f));
+ 359   2                  LcdWriteData('-');
+ 360   2                  if(is_flicker){
+ 361   3                      LcdWriteData('0'+TIME[4]/16);                   //月
+ 362   3                      LcdWriteData('0'+(TIME[4]&0x0f));
+ 363   3                      is_flicker=0;
+ 364   3                  }else{
+ 365   3                      LcdWriteDataString("  ");
+C51 COMPILER V9.01   MAIN                                                                  04/21/2018 02:05:32 PAGE 7   
+
+ 366   3                      is_flicker=1;
+ 367   3                  }
+ 368   2                  LcdWriteData('-');
+ 369   2                  LcdWriteData('0'+TIME[3]/16);                       //日
+ 370   2                  LcdWriteData('0'+(TIME[3]&0x0f));
+ 371   2                  UpAndDown(4,0x12,1);
+ 372   2                  LcdWriteCom(0x80+0x4b);
+ 373   2                  LcdWriteData('0'+(TIME[5]&0x07));   //星期
+ 374   2                  break;
+ 375   2              case 5:
+ 376   2                  LcdWriteDataString("SetTime:day");
+ 377   2                  LcdWriteCom(0x80+0X40);
+ 378   2                  LcdWriteData('2');
+ 379   2                  LcdWriteData('0');
+ 380   2                  LcdWriteData('0'+TIME[6]/16);                       //年
+ 381   2                  LcdWriteData('0'+(TIME[6]&0x0f));
+ 382   2                  LcdWriteData('-');
+ 383   2                  LcdWriteData('0'+TIME[4]/16);                       //月
+ 384   2                  LcdWriteData('0'+(TIME[4]&0x0f));
+ 385   2                  LcdWriteData('-');
+ 386   2                  if(is_flicker){
+ 387   3                      LcdWriteData('0'+TIME[3]/16);                   //日
+ 388   3                      LcdWriteData('0'+(TIME[3]&0x0f));
+ 389   3                      is_flicker=0;
+ 390   3                  }else{
+ 391   3                      LcdWriteDataString("  ");
+ 392   3                      is_flicker=1;
+ 393   3                  }
+ 394   2                  LcdWriteCom(0x80+0x4b);
+ 395   2                  LcdWriteData('0'+(TIME[5]&0x07));   //星期
+ 396   2                  UpAndDown(3,0x31,1);
+ 397   2                  break;
+ 398   2              case 6:
+ 399   2                  LcdWriteDataString("SetTime:week");
+ 400   2                  LcdWriteCom(0x80+0X40);
+ 401   2                  LcdWriteData('2');
+ 402   2                  LcdWriteData('0');
+ 403   2                  LcdWriteData('0'+TIME[6]/16);                       //年
+ 404   2                  LcdWriteData('0'+(TIME[6]&0x0f));
+ 405   2                  LcdWriteData('-');
+ 406   2                  LcdWriteData('0'+TIME[4]/16);                       //月
+ 407   2                  LcdWriteData('0'+(TIME[4]&0x0f));
+ 408   2                  LcdWriteData('-');
+ 409   2                  LcdWriteData('0'+TIME[3]/16);                       //日
+ 410   2                  LcdWriteData('0'+(TIME[3]&0x0f));
+ 411   2                  if(is_flicker){
+ 412   3                      LcdWriteCom(0x80+0x4b);
+ 413   3                      LcdWriteData('0'+(TIME[5]&0x07));       //星期
+ 414   3                      is_flicker=0;
+ 415   3                  }else{
+ 416   3                      LcdWriteDataString("  ");
+ 417   3                      is_flicker=1;
+ 418   3                  }
+ 419   2                  UpAndDown(5,0x7,1);
+ 420   2                  break;
+ 421   2          }
+ 422   1      }
+ 423          
+ 424          /********************************************************
+ 425          *                      主函数
+ 426          *********************************************************/
+ 427          void main()
+C51 COMPILER V9.01   MAIN                                                                  04/21/2018 02:05:32 PAGE 8   
+
+ 428          {
+ 429   1          Ds1302Init();
+ 430   1          LcdInit();
+ 431   1          KeyInit();
+ 432   1          ALARM=1;
+ 433   1          Feast=1;
+ 434   1          while(1)
+ 435   1          {
+ 436   2              if(MODE==0){
+ 437   3                  Lcd1602_Delay1ms(10);
+ 438   3                  if(MODE==0){
+ 439   4                      DeepOne();
+ 440   4                      EnterMode();
+ 441   4                  }
+ 442   3              }else{   //正常状态
+ 443   3                  Ds1302ReadTime();
+ 444   3                  LcdDisplay();
+ 445   3                  if(isSleep){//睡眠
+ 446   4                      if(Ds1302SingleRead(1)==Sleep_Minute){
+ 447   5                          if(AlarmMusic(WhichSleep,Ds1302SingleRead(2),Sleep_Minute,Alarm_Sound)){
+ 448   6                              SleepAlarm(Sleep_Minute,WhichSleep);
+ 449   6                          }else{
+ 450   6                              isSleep = 0;
+ 451   6                          }
+ 452   5                      }
+ 453   4                  }
+ 454   3                  if(isAlarm){//闹铃1
+ 455   4                      if(Ds1302SingleRead(2)==Alarm_Hour&&Ds1302SingleRead(1)==Alarm_Minute)  {
+ 456   5                          //LcdWriteCom(0x01);  //清屏
+ 457   5                          Ds1302ReadTime();
+ 458   5                          LcdDisplay();
+ 459   5                          if(AlarmMusic(0,Alarm_Hour,Alarm_Minute,Alarm_Sound)){//返回1设置睡眠
+ 460   6                              SleepAlarm(Alarm_Minute,0);
+ 461   6                              isAlarm=0;
+ 462   6                          }else{
+ 463   6                              isAlarm= 0;
+ 464   6                              isSleep = 0;
+ 465   6                          }
+ 466   5      
+ 467   5                      }
+ 468   4                  }
+ 469   3                  if(isAlarm2){//闹铃2
+ 470   4                      if(Ds1302SingleRead(2)==Alarm_Hour2&&Ds1302SingleRead(1)==Alarm_Minute2)        {
+ 471   5                          //LcdWriteCom(0x01);  //清屏
+ 472   5                          //DeepNumber(2);
+ 473   5                          Ds1302ReadTime();
+ 474   5                          LcdDisplay();
+ 475   5                          if(AlarmMusic(1,Alarm_Hour2,Alarm_Minute2,Alarm_Sound)){
+ 476   6                              SleepAlarm(Alarm_Minute2,1);
+ 477   6                              isAlarm2=0;
+ 478   6                          }else{
+ 479   6                              isAlarm2 = 0;
+ 480   6                              isSleep = 0;
+ 481   6                          }
+ 482   5                      }
+ 483   4                  }
+ 484   3                  if(!Ds1302SingleRead(0)&&!Ds1302SingleRead(1)&&(Ds1302SingleRead(2)/16*10+(Ds1302SingleRead(2)
+             -&0x0f)>=6)&&(Ds1302SingleRead(2)/16*10+(Ds1302SingleRead(2)&0x0f)<=22)){
+ 485   4                      //每隔60分连续响多声，几点响几声（即整点报时）
+ 486   4                      DeepNumber(Ds1302SingleRead(2)/16*10+(Ds1302SingleRead(2)&0x0f));
+ 487   4                  }else if(!Ds1302SingleRead(0)){
+ 488   4                      DeepOne();      //每隔60秒自动短响一声     TODO ************************************************
+C51 COMPILER V9.01   MAIN                                                                  04/21/2018 02:05:32 PAGE 9   
+
+             -**************************************************************************改***************
+ 489   4                      Feast=0;
+ 490   4                  }
+ 491   3                  //节日功能
+ 492   3                  for(f=0;f<12;f++){
+ 493   4                      if(Ds1302SingleRead(4)==Feast_month[f]&& Ds1302SingleRead(3)==Feast_day[f]){
+ 494   5                          Feast=0;
+ 495   5                          break;
+ 496   5                      }else{
+ 497   5                          Feast=1;
+ 498   5                      }
+ 499   4                  }
+ 500   3      
+ 501   3                  if(UP==0){
+ 502   4                      Lcd1602_Delay1ms(10);
+ 503   4                      if(UP==0){
+ 504   5                          DeepOne();
+ 505   5                          isAlarm = isAlarm?0:1 ;
+ 506   5                          while((d<50)&&(UP==0)){
+ 507   6                              Lcd1602_Delay1ms(10);
+ 508   6                              d++;
+ 509   6                          }
+ 510   5                          d=0;
+ 511   5                      }
+ 512   4                  }
+ 513   3                  if(DOWN==0){
+ 514   4                      Lcd1602_Delay1ms(10);
+ 515   4                      if(DOWN==0){
+ 516   5                          DeepOne();
+ 517   5                          isAlarm2 = isAlarm2?0:1;
+ 518   5                          while((d<50)&&(DOWN==0)){
+ 519   6                              Lcd1602_Delay1ms(10);
+ 520   6                              d++;
+ 521   6                          }
+ 522   5                          d=0;
+ 523   5                      }
+ 524   4                  }
+ 525   3      
+ 526   3              }
+ 527   2      
+ 528   2          }
+ 529   1      
+ 530   1      }
+ 531          
+ 532          /*
+ 533           *展示sound list
+ 534           */
+ 535          void SetAlarmSound()
+ 536          {
+ 537   1          LcdWriteCom(0x80);
+ 538   1          LcdWriteDataString("SetMusic:");
+ 539   1          LcdWriteCom(0x80+0X40);
+ 540   1          switch(Alarm_Sound){
+ 541   2              case 0:
+ 542   2                  LcdWriteDataString("songbie");
+ 543   2                  break;
+ 544   2              case 1:
+ 545   2                  LcdWriteDataString("tiankongzhicheng");
+ 546   2                  break;
+ 547   2              case 2:
+ 548   2                  LcdWriteDataString("wang");
+ 549   2                  break;
+C51 COMPILER V9.01   MAIN                                                                  04/21/2018 02:05:32 PAGE 10  
+
+ 550   2          }
+ 551   1      }
+ 552          
+ 553          /*
+ 554           *进入设置闹铃音乐
+ 555           */
+ 556          void EnterSetAlarmSound()
+ 557          {
+ 558   1          SetAlarmSound();
+ 559   1          if(SET==0){
+ 560   2              Lcd1602_Delay1ms(10);
+ 561   2              if(SET==0){
+ 562   3                  DeepOne();
+ 563   3                  LcdWriteCom(0x01);  //清屏
+ 564   3                  ++Alarm_Sound;
+ 565   3                  Alarm_Sound%=3;
+ 566   3                  while((d<50)&&(SET==0)){
+ 567   4                      Lcd1602_Delay1ms(10);
+ 568   4                      d++;
+ 569   4                  }
+ 570   3                  d=0;
+ 571   3              }
+ 572   2          }
+ 573   1      }
+ 574          
+ 575          /*
+ 576           *进入设置闹铃
+ 577           */
+ 578          void EnterSetAlarm(uchar a)
+ 579          {
+ 580   1          SetAlarmTime(a);
+ 581   1          if(SET==0){
+ 582   2              Lcd1602_Delay1ms(10);
+ 583   2              if(SET==0){
+ 584   3                  DeepOne();
+ 585   3                  LcdWriteCom(0x01);  //清屏
+ 586   3                  ++Set_Flag_Alarm;
+ 587   3                  Set_Flag_Alarm%=2;
+ 588   3                  while((d<50)&&(SET==0)){
+ 589   4                      Lcd1602_Delay1ms(10);
+ 590   4                      d++;
+ 591   4                  }
+ 592   3                  d=0;
+ 593   3              }
+ 594   2          }
+ 595   1      }
+ 596          
+ 597          /*
+ 598           *进入设置时间
+ 599           */
+ 600          void EnterSetTime()
+ 601          {
+ 602   1          SetAllTime();
+ 603   1      
+ 604   1          if(SET==0){
+ 605   2              Lcd1602_Delay1ms(10);
+ 606   2              if(SET==0){
+ 607   3                  DeepOne();
+ 608   3                  LcdWriteCom(0x01);  //清屏
+ 609   3                  ++Set_Flag;
+ 610   3                  Set_Flag%=7;
+ 611   3                  while((d<50)&&(SET==0)){
+C51 COMPILER V9.01   MAIN                                                                  04/21/2018 02:05:32 PAGE 11  
+
+ 612   4                      Lcd1602_Delay1ms(10);
+ 613   4                      d++;
+ 614   4                  }
+ 615   3                  d=0;
+ 616   3              }
+ 617   2          }
+ 618   1      
+ 619   1      }
+ 620          
+ 621          /*
+ 622           * 进入Mode模式
+ 623           */
+ 624          void EnterMode()
+ 625          {
+ 626   1          LcdWriteCom(0x01);  //清屏
+ 627   1          //Lcd1602_Delay1ms(300);
+ 628   1          while(1){
+ 629   2              if(Mode_Flag==0){  //enter set time
+ 630   3                  EnterSetTime();
+ 631   3              }else if(Mode_Flag==1){    //enter set Alarm
+ 632   3                  EnterSetAlarm(0);
+ 633   3              }else if(Mode_Flag==2){    //enter set ALarm2
+ 634   3                  EnterSetAlarm(1);
+ 635   3              }else if(Mode_Flag==3){
+ 636   3                  EnterSetAlarmSound();  //enter set Alarm Sound
+ 637   3              }else{           //back home
+ 638   3                  Mode_Flag=0;
+ 639   3                  break;
+ 640   3              }
+ 641   2              if(MODE==0){
+ 642   3                  Lcd1602_Delay1ms(10);
+ 643   3                  if(MODE==0){
+ 644   4                      DeepOne();
+ 645   4                      LcdWriteCom(0x01);  //清屏
+ 646   4                      ++Mode_Flag;
+ 647   4                      Mode_Flag%=5;
+ 648   4                      while((d<50)&&(MODE==0)){
+ 649   5                          Lcd1602_Delay1ms(10);
+ 650   5                          d++;
+ 651   5                      }
+ 652   4                      d=0;
+ 653   4                  }
+ 654   3              }
+ 655   2          }
+ 656   1      }
+ 657          
+ 658          /*
+ 659           * 显示函数
+ 660           */
+ 661          void LcdDisplay()
+ 662          {
+ 663   1          LcdWriteCom(0x80+0X40);
+ 664   1          LcdWriteData('0'+TIME[2]/16);                               //时
+ 665   1          LcdWriteData('0'+(TIME[2]&0x0f));
+ 666   1          LcdWriteData(':');
+ 667   1          LcdWriteData('0'+TIME[1]/16);                               //分
+ 668   1          LcdWriteData('0'+(TIME[1]&0x0f));
+ 669   1          LcdWriteData(':');
+ 670   1          LcdWriteData('0'+TIME[0]/16);                               //秒
+ 671   1          LcdWriteData('0'+(TIME[0]&0x0f));
+ 672   1          if(isAlarm){
+ 673   2              LcdWriteCom(0x80+0x4b);
+C51 COMPILER V9.01   MAIN                                                                  04/21/2018 02:05:32 PAGE 12  
+
+ 674   2              LcdWriteDataString("A1");
+ 675   2          }else{
+ 676   2              LcdWriteCom(0x80+0x4b);
+ 677   2              LcdWriteDataString("  ");
+ 678   2          }
+ 679   1          if(isAlarm2){
+ 680   2              LcdWriteCom(0x80+0x4e);
+ 681   2              LcdWriteDataString("A2");
+ 682   2          }else{
+ 683   2              LcdWriteCom(0x80+0x4e);
+ 684   2              LcdWriteDataString("  ");
+ 685   2          }
+ 686   1      
+ 687   1          LcdWriteCom(0x80);
+ 688   1          LcdWriteData('2');
+ 689   1          LcdWriteData('0');
+ 690   1          LcdWriteData('0'+TIME[6]/16);                       //年
+ 691   1          LcdWriteData('0'+(TIME[6]&0x0f));
+ 692   1          LcdWriteData('-');
+ 693   1          LcdWriteData('0'+TIME[4]/16);                       //月
+ 694   1          LcdWriteData('0'+(TIME[4]&0x0f));
+ 695   1          LcdWriteData('-');
+ 696   1          LcdWriteData('0'+TIME[3]/16);                       //日
+ 697   1          LcdWriteData('0'+(TIME[3]&0x0f));
+ 698   1          LcdWriteCom(0x8D);
+ 699   1          LcdWriteData('0'+(TIME[5]&0x07));   //星期  
+ 700   1      
+ 701   1      
+ 702   1      }
+ 703          /*
+ 704          void LcdDisplay_time()
+ 705          {
+ 706                  if(isAlarm){
+ 707                          LcdWriteCom(0x80+0x4b);
+ 708                          LcdWriteDataString("A1");
+ 709                  }else{
+ 710                          LcdWriteCom(0x80+0x4b);
+ 711                          LcdWriteDataString("  ");
+ 712                  }       
+ 713                  if(isAlarm2){
+ 714                          LcdWriteCom(0x80+0x4e);
+ 715                          LcdWriteDataString("A2");
+ 716                  }else{
+ 717                          LcdWriteCom(0x80+0x4e);
+ 718                          LcdWriteDataString("  ");
+ 719                  }
+ 720          }
+ 721          */
+ 722          
+ 723          /*
+ 724           * 设置睡眠
+ 725           */
+ 726          void SleepAlarm(uchar Minute,uchar Which)
+ 727          {
+ 728   1          uchar i;
+ 729   1          isSleep = 1;
+ 730   1          WhichSleep = Which;
+ 731   1          Sleep_Minute = Minute ;
+ 732   1          for(i=0;i<2;i++){
+ 733   2              Sleep_Minute = (Sleep_Minute&0x0f)<0x9?(Sleep_Minute+0x01):(Sleep_Minute+0x07);
+ 734   2              Sleep_Minute = Sleep_Minute<0x60?Sleep_Minute:0 ;
+ 735   2          }
+C51 COMPILER V9.01   MAIN                                                                  04/21/2018 02:05:32 PAGE 13  
+
+ 736   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   3259    ----
+   CONSTANT SIZE    =    237    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     21      19
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
